@@ -1,0 +1,8 @@
+LIBRARY	"dpapi"
+
+EXPORTS
+CryptProtectData
+CryptProtectMemory
+CryptUnprotectData
+CryptUnprotectMemory
+CryptUpdateProtectedState
