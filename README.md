@@ -27,5 +27,5 @@
 
 ## Tricks
 ```
-  * Add Kreyto.sql on DISCORD.
+  * Add Senko.bin on DISCORD.
 ```
