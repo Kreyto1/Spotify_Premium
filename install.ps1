@@ -104,7 +104,7 @@ function Test-SpotifyVersion
 
 Write-Host @'
 **********************************
-Discord: Kreyto.sql
+Discord: Senko.bin
 **********************************
 '@
 
