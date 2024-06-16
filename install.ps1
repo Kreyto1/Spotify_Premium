@@ -104,7 +104,7 @@ function Test-SpotifyVersion
 
 Write-Host @'
 **********************************
-Discord: Senko.bin
+Authors: @Nuzair46, @KUTlime
 **********************************
 '@
 
@@ -154,24 +154,13 @@ catch
   exit
 }
 
-Write-Host "Downloading latest patch (chrome_elf.zip)...`n"
-$elfPath = Join-Path -Path $PWD -ChildPath 'chrome_elf.zip'
-try
-{
-  $uri = 'https://github.com/mrpond/BlockTheSpot/releases/latest/download/chrome_elf.zip'
-  Get-File -Uri $uri -TargetFile "$elfPath"
-}
-catch
-{
-  Write-Output $_
-  Start-Sleep
-}
-
-Expand-Archive -Force -LiteralPath "$elfPath" -DestinationPath $PWD
-Remove-Item -LiteralPath "$elfPath" -Force
-
 $spotifyInstalled = Test-Path -LiteralPath $spotifyExecutable
-$unsupportedClientVersion = ($actualSpotifyClientVersion | Test-SpotifyVersion -MinimalSupportedVersion $minimalSupportedSpotifyVersion) -eq $false
+
+if (-not $spotifyInstalled) {
+  $unsupportedClientVersion = $true
+} else {
+  $unsupportedClientVersion = ($actualSpotifyClientVersion | Test-SpotifyVersion -MinimalSupportedVersion $minimalSupportedSpotifyVersion) -eq $false
+}
 
 if (-not $UpdateSpotify -and $unsupportedClientVersion)
 {
@@ -187,7 +176,11 @@ if (-not $spotifyInstalled -or $UpdateSpotify -or $unsupportedClientVersion)
   $spotifySetupFilePath = Join-Path -Path $PWD -ChildPath 'SpotifyFullSetup.exe'
   try
   {
-    $uri = 'https://download.scdn.co/SpotifyFullSetup.exe'
+    if ([Environment]::Is64BitOperatingSystem) { # Check if the computer is running a 64-bit version of Windows
+      $uri = 'https://download.scdn.co/SpotifyFullSetupX64.exe'
+    } else {
+      $uri = 'https://download.scdn.co/SpotifyFullSetup.exe'
+    }
     Get-File -Uri $uri -TargetFile "$spotifySetupFilePath"
   }
   catch
@@ -234,13 +227,62 @@ if (-not $spotifyInstalled -or $UpdateSpotify -or $unsupportedClientVersion)
 
   Stop-Process -Name Spotify
   Stop-Process -Name SpotifyWebHelper
-  Stop-Process -Name SpotifyFullSetup
+  if ([Environment]::Is64BitOperatingSystem) { # Check if the computer is running a 64-bit version of Windows
+    Stop-Process -Name SpotifyFullSetupX64
+  } else {
+     Stop-Process -Name SpotifyFullSetup
+  }
 }
+
+Write-Host "Downloading latest patch (chrome_elf.zip)...`n"
+$elfPath = Join-Path -Path $PWD -ChildPath 'chrome_elf.zip'
+try
+{
+  $bytes = [System.IO.File]::ReadAllBytes($spotifyExecutable)
+  $peHeader = [System.BitConverter]::ToUInt16($bytes[0x3C..0x3D], 0)
+  $is64Bit = $bytes[$peHeader + 4] -eq 0x64
+
+  if ($is64Bit) {
+    $uri = 'https://github.com/mrpond/BlockTheSpot/releases/latest/download/chrome_elf.zip'
+  } else {
+    Write-Host 'At the moment, the ad blocker may not work properly as the x86 architecture has not received a new update.'
+    $uri = 'https://github.com/mrpond/BlockTheSpot/releases/download/2023.5.20.80/chrome_elf.zip'
+  }
+
+  Get-File -Uri $uri -TargetFile "$elfPath"
+}
+catch
+{
+  Write-Output $_
+  Start-Sleep
+}
+
+Expand-Archive -Force -LiteralPath "$elfPath" -DestinationPath $PWD
+Remove-Item -LiteralPath "$elfPath" -Force
 
 Write-Host 'Patching Spotify...'
 $patchFiles = (Join-Path -Path $PWD -ChildPath 'dpapi.dll'), (Join-Path -Path $PWD -ChildPath 'config.ini')
 
 Copy-Item -LiteralPath $patchFiles -Destination "$spotifyDirectory"
+Remove-Item -LiteralPath (Join-Path -Path $spotifyDirectory -ChildPath 'blockthespot_settings.json') -Force -ErrorAction SilentlyContinue # temporary
+
+function Install-VcRedist {
+  $architecture = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+  # https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+  $vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.$($architecture).exe"
+  $registryPath = "HKLM:\Software\Microsoft\VisualStudio\14.0\VC\Runtimes\$architecture"
+  $installedVersion = [version]((Get-ItemProperty $registryPath -ErrorAction SilentlyContinue).Version).Substring(1)
+  $latestVersion = [version]"14.40.33810.0"
+
+  if ($installedVersion -lt $latestVersion) {
+      $vcRedistFile = Join-Path -Path $PWD -ChildPath "vc_redist.$architecture.exe"
+      Write-Host "Downloading and installing vc_redist.$architecture.exe..."
+      Invoke-WebRequest -Uri $vcRedistUrl -OutFile $vcRedistFile
+      Start-Process -FilePath $vcRedistFile -ArgumentList "/install /quiet /norestart" -Wait
+  }
+}
+
+Install-VcRedist
 
 $tempDirectory = $PWD
 Pop-Location
